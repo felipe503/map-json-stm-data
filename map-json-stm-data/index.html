@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Map for Mobile</title>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<style>
+			#map-canvas{height:500px;}
+			#gears{position:absolute;z-index:10;left:50%;margin-left:-53px;
+		</style>
+		<script src="https://code.jquery.com/jquery-3.1.1.min.js" integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8=" crossorigin="anonymous"></script>
+		<script type="text/javascript" src="/functions/functions.js"></script>
+	</head>
+	<body>
+		<section class="search">
+			<input type="text" name="search" placeholder="enter adress or intersection"/>
+			<input type="button" value="search"/>
+		</section>
+		<div id="gears">
+			<img src="/images/gears.gif" />
+			<div>Loading data...</div>
+		</div>
+		<section id="map-canvas"></section>
+		<script async defer src="/markerclusterer/markerclusterer.js"></script>
+		<script async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyALXxJYGKNHWr0EenPE3ZxXCVLnEwT6rVA&callback=initMap"></script>
+		
+		<script>
+			function initMap() 
+			{
+				var mapOptions = {
+					center: new google.maps.LatLng(45.5016889,-73.56725599999999),
+					zoom: 12,
+					mapTypeId: google.maps.MapTypeId.ROADMAP
+				};
+				map = new google.maps.Map(document.getElementById("map-canvas"), mapOptions);
+				
+				var path = '/data/';
+				var CLUSTER_MINIMUM_SIZE = 8;
+				var options = { minimumClusterSize: CLUSTER_MINIMUM_SIZE ,imagePath: '/images/m'};
+				//var bounds = new google.maps.LatLngBounds();
+				var markers=[];
+				var _stop_times=[];
+				for(var i = 0; i <= 12; i++)
+				{
+					$.getJSON(path + 'stop_times'+(i+1)+'.json')
+						.then(function(data) {
+							//console.log('get stop_times'+i+'.json');
+							_stop_times.push(data.results);
+						})
+						.fail(function() {
+							// ...didn't work, handle it
+						});
+				}
+				var _trips;
+				$.getJSON(path + 'trips.json', function(trips){
+					_trips = trips;
+					//console.log('get trips.json');
+				});
+				
+				
+				$.getJSON(path + 'routes.json', function(routes){
+					//console.log('get routes.json');
+					_routes = routes;
+				});
+				$.getJSON(path + 'stops.json',function(data){
+					//console.log('get stops.json');
+					$.each(data,function(i){
+						var coords = [this.stop_lat, this.stop_lon];
+						var latLng = new google.maps.LatLng(coords[0],coords[1]);
+						var marker = new google.maps.Marker({
+							position: latLng,
+							title: this.stop_name,
+							lat:this.stop_lat,
+							lon:this.stop_lon,
+							stop_id:this.stop_id,
+							map: map
+						});
+						var infoWindow = new google.maps.InfoWindow();
+						google.maps.event.addListener(marker, 'mousedown', (function (marker, i) {
+							//console.log('adding listener to markers');
+							return function(){
+								var stop_id = this.stop_id;
+								marker.content='';
+								$.each(_stop_times, function(){
+									$.each(this, function(){
+										if(this.stop_id == stop_id && ( this.arrival_time >= timeNow(10,false) && this.arrival_time < timeNow(10,true)))
+										{
+											var trip_id = this.trip_id;
+											var arrival_time = this.arrival_time;
+											$.each(_trips, function(){
+												if(this.trip_id == trip_id)
+												{
+													var route_id = this.route_id;
+													$.each(_routes, function(){
+														
+														if(route_id == this.route_id)
+														{
+															//console.log('adding content to marker '+marker.title)
+															marker.content+='<div>'+this.route_short_name+' - '+this.route_long_name+' - '+arrival_time+'</div>';
+														}
+													});
+													
+												}
+											});
+											
+										}	
+									});
+								});
+								infoWindow.setContent('<strong>' + marker.title + '</strong>' + marker.content );
+								infoWindow.open(map, marker);
+							}
+						})(marker, i));
+						markers.push(marker);
+						$('#gears').hide();
+					});
+					var markerCluster = new MarkerClusterer(map, markers, options); 
+					var listener = google.maps.event.addListener(map, "idle", function(){
+						google.maps.event.removeListener(listener);
+					});
+					
+				});
+				$('input[type=button]').click(function(){
+					var addressInput = $('input[type=text]').val();
+					var geocoder = new google.maps.Geocoder();
+					geocoder.geocode({address: addressInput}, function(results, status) {
+						if (status == google.maps.GeocoderStatus.OK) 
+						{
+							var myResult = results[0].geometry.location;
+							var myLat = results[0].geometry.location.lat();
+							var myLon = results[0].geometry.location.lng();
+							var myTitle = results[0].address_components[0].short_name;
+							map.setCenter(myResult);
+							map.setZoom(18);
+						}
+					});
+				});
+			}
+		</script>
+	</body>
+</html>
